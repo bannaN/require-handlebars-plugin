@@ -1,5 +1,5 @@
 /**
- * @license Handlebars hbs 0.9.1 - Alex Sexton, but Handlebars has its own licensing junk
+ * @license Handlebars hbs 2.0.0-alpha1 - Alex Sexton, but Handlebars has its own licensing junk
  *
  * Available via the MIT or new BSD license.
  * see: http://github.com/jrburke/require-cs for details on the plugin this was based off of
@@ -189,7 +189,7 @@ define([
       }
     },
 
-    version: '0.9.1',
+    version: '2.0.0',
 
     load: function (name, parentRequire, load, config) {
       //>>excludeStart('excludeHbs', pragmas.excludeHbs)
@@ -354,7 +354,6 @@ define([
                   if (pairValue instanceof Handlebars.AST.StringNode
                     || pairValue instanceof Handlebars.AST.NumberNode
                     || pairValue instanceof Handlebars.AST.BooleanNode
-                    || pairValue instanceof Handlebars.AST.IdNode
                     //TODO: Add support for subexpressions here?
                   ) {
                     helpersres.push(statement.id.string);
@@ -447,7 +446,7 @@ define([
           var debugOutputEnd   = '';
           var debugProperties = '';
           var deps = [];
-          var depStr, helpDepStr, metaObj, head, linkElem;
+          var depStr, helpDepStr, metaObj, head, linkElem, helpDepArr;
           var baseDir = name.substr(0,name.lastIndexOf('/')+1);
 
           require.config.hbs = require.config.hbs || {};
@@ -490,25 +489,21 @@ define([
           depStr = deps.join("', '");
 
           helps = helps.concat((metaObj && metaObj.helpers) ? metaObj.helpers : []);
-          helpDepStr = disableHelpers ?
-            '' : (function (){
-              var i;
-              var paths = [];
-              var pathGetter = config.hbs && config.hbs.helperPathCallback
+          helpDepArr = disableHelpers ?
+              [] : (function (){
+            var i;
+            var paths = [];
+            var pathGetter = config.hbs && config.hbs.helperPathCallback
                 ? config.hbs.helperPathCallback
                 : function (name){
-                  return (config.hbs && config.hbs.helperDirectory ? config.hbs.helperDirectory : helperDirectory) + name;
-                };
+              return (config.hbs && config.hbs.helperDirectory ? config.hbs.helperDirectory : helperDirectory) + name;
+            };
 
-              for ( i = 0; i < helps.length; i++ ) {
-                paths[i] = "'" + pathGetter(helps[i], path) + "'"
-              }
-              return paths;
-            })().join(',');
-
-          if ( helpDepStr ) {
-            helpDepStr = ',' + helpDepStr;
-          }
+            for ( i = 0; i < helps.length; i++ ) {
+              paths[i] = pathGetter(helps[i], path)
+            }
+            return paths;
+          })();
 
           if (metaObj) {
             try {
@@ -568,7 +563,7 @@ define([
 
           var mapping = disableI18n? false : _.extend( langMap, config.localeMapping );
           var configHbs = config.hbs || {};
-          var options = _.extend(configHbs.compileOptions || {}, { originalKeyFallback: configHbs.originalKeyFallback });
+          var options = _.extend(configHbs.compileOptions || {}, { originalKeyFallback: configHbs.originalKeyFallback, data : true });
           var prec = precompile( text, mapping, options);
           var tmplName = config.isBuild ? '' : "'" + name + "',";
 
@@ -578,21 +573,12 @@ define([
           if(require.config.hbs._partials[name])
             partialReferences = require.config.hbs._partials[name].references;
 
-          text = '/* START_TEMPLATE */\n' +
-                 'define('+tmplName+"['hbs','hbs/handlebars'"+depStr+helpDepStr+'], function( hbs, Handlebars ){ \n' +
-                   'var t = Handlebars.template(' + prec + ');\n' +
-                   "Handlebars.registerPartial('" + name + "', t);\n";
 
-          for(var i=0; i<partialReferences.length;i++)
-            text += "Handlebars.registerPartial('" + partialReferences[i] + "', t);\n";
-
-          text += debugProperties +
-                   'return t;\n' +
-                 '});\n' +
-                 '/* END_TEMPLATE */\n';
-
+          var concatDepsArr = ['hbs','hbs/handlebars'].concat(helpDepArr).concat(deps);
+          var text = "";
           //Hold on to the transformed text if a build.
           if (config.isBuild) {
+            //Why are we preserving this?
             buildMap[compiledName] = text;
           }
 
@@ -600,23 +586,38 @@ define([
           //sourceURL trick, so skip it if enabled.
           /*@if (@_jscript) @else @*/
           if (!config.isBuild) {
+            //Is this necessary with the new approach?
             text += '\r\n//# sourceURL=' + path;
           }
           /*@end@*/
 
           if ( !config.isBuild ) {
-            require( deps, function (){
-              load.fromText(text);
+            //Will it cause any problems switching to this approach instead of the old string eval?
+            require(concatDepsArr, function(){
+              define(name, concatDepsArr, function(hbs, Handlebars){
 
-              //Give result to load. Need to wait until the module
-              //is fully parse, which will happen after this
-              //execution.
+                console.log("inside callback name: " + name);
+                var t = Handlebars.template(prec);
+                Handlebars.registerPartial(name, t);
+
+                for(var i=0; i<partialReferences.length;i++)
+                  Handlebars.registerPartial(partialReferences[i], t);
+
+                t = _.extend(t, {
+                  meta : JSON.parse(meta),
+                  helpers : helps,
+                  deps : deps,
+                  vars : vars
+                });
+                return t;
+              });
               parentRequire([name], function (value) {
                 load(value);
               });
             });
           }
           else {
+            //TODO: This is obviously not working
             load.fromText(name, text);
 
             //Give result to load. Need to wait until the module
@@ -673,3 +674,4 @@ define([
   };
 });
 /* END_hbs_PLUGIN */
+

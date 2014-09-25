@@ -39,7 +39,8 @@ define(['hbs/handlebars', "hbs/underscore"], function ( Handlebars, _ ) {
         ast = replaceLocaleStrings(ast, mapping, options);
     }
     environment = new Handlebars.Compiler().compile(ast, options);
-    return new Handlebars.JavaScriptCompiler().compile(environment, options);
+    //Maybe it would be benifitial to move this call out to hbs.js instead of going throught i18nprecompile?
+    return new Handlebars.JavaScriptCompiler().compile(environment, options, undefined, true);
   };
 });
 //>>excludeEnd('excludeAfterBuild')
