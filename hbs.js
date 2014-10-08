@@ -451,7 +451,6 @@ define([
 
           require.config.hbs = require.config.hbs || {};
           require.config.hbs._partials = require.config.hbs._partials || {};
-
           if(meta !== '{}') {
             try {
               metaObj = JSON.parse(meta);
@@ -564,6 +563,7 @@ define([
           var mapping = disableI18n? false : _.extend( langMap, config.localeMapping );
           var configHbs = config.hbs || {};
           var options = _.extend(configHbs.compileOptions || {}, { originalKeyFallback: configHbs.originalKeyFallback, data : true });
+
           var prec = precompile( text, mapping, options);
           var tmplName = config.isBuild ? '' : "'" + name + "',";
 
@@ -575,28 +575,37 @@ define([
 
 
           var concatDepsArr = ['hbs','hbs/handlebars'].concat(helpDepArr).concat(deps);
-          var text = "";
-          //Hold on to the transformed text if a build.
-          if (config.isBuild) {
-            //Why are we preserving this?
-            buildMap[compiledName] = text;
-          }
 
-          //IE with conditional comments on cannot handle the
-          //sourceURL trick, so skip it if enabled.
-          /*@if (@_jscript) @else @*/
-          if (!config.isBuild) {
-            //Is this necessary with the new approach?
-            text += '\r\n//# sourceURL=' + path;
-          }
+            text = '/* START_TEMPLATE */\n' +
+                'define('+tmplName+"['"+ concatDepsArr.join("','")+"'], function( hbs, Handlebars ){ \n" +
+                'var t = Handlebars.template(' + prec.main.toString() + ');\n' +
+                "Handlebars.registerPartial('" + name + "', t);\n";
+
+            for(var i=0; i<partialReferences.length;i++)
+              text += "Handlebars.registerPartial('" + partialReferences[i] + "', t);\n";
+
+            text += debugProperties +
+                'return t;\n' +
+                '});\n' +
+                '/* END_TEMPLATE */\n';
+
+            //Hold on to the transformed text if a build.
+            if (config.isBuild) {
+              buildMap[compiledName] = text;
+            }
+
+            //IE with conditional comments on cannot handle the
+            //sourceURL trick, so skip it if enabled.
+            /*@if (@_jscript) @else @*/
+            if (!config.isBuild) {
+              text += '\r\n//# sourceURL=' + path;
+            }
           /*@end@*/
 
           if ( !config.isBuild ) {
             //Will it cause any problems switching to this approach instead of the old string eval?
             require(concatDepsArr, function(){
               define(name, concatDepsArr, function(hbs, Handlebars){
-
-                console.log("inside callback name: " + name);
                 var t = Handlebars.template(prec);
                 Handlebars.registerPartial(name, t);
 
@@ -615,9 +624,9 @@ define([
                 load(value);
               });
             });
+
           }
           else {
-            //TODO: This is obviously not working
             load.fromText(name, text);
 
             //Give result to load. Need to wait until the module
